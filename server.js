@@ -144,6 +144,23 @@ app.get('/images', async (req, res) => {
   }
 });
 
+// Database Size API
+app.get('/database-size', async (req, res) => {
+  try {
+    const notesCount = await Note.countDocuments();
+    const imagesCount = await Image.countDocuments();
+    const pdfsCount = await Pdf.countDocuments();
+
+    res.status(200).json({
+      notes: notesCount,
+      images: imagesCount,
+      pdfs: pdfsCount,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Start the Server
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
