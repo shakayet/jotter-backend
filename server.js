@@ -122,7 +122,7 @@ app.get('/pdfs', async (req, res) => {
 });
 
 // Image Upload & Fetch
-app.post('/upload-image', upload.single('file'), async (req, res) => {
+app.post('/images', upload.single('file'), async (req, res) => {
   try {
     const { originalname, filename } = req.file;
     const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${filename}`;
