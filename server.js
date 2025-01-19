@@ -53,12 +53,14 @@ const pdfSchema = new mongoose.Schema({
   name: { type: String, required: true },
   url: { type: String, required: true },
   uploadedAt: { type: Date, default: Date.now },
+  size: { type: Number, required: true }, // Add file size for stats
 });
 
 const imageSchema = new mongoose.Schema({
   name: { type: String, required: true },
   url: { type: String, required: true },
   uploadedAt: { type: Date, default: Date.now },
+  size: { type: Number, required: true }, // Add file size for stats
 });
 
 // Create Models
@@ -103,9 +105,9 @@ app.get('/notes', async (req, res) => {
 // PDF Upload & Fetch
 app.post('/upload-pdf', upload.single('file'), async (req, res) => {
   try {
-    const { originalname, filename } = req.file;
+    const { originalname, filename, size } = req.file;
     const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${filename}`;
-    const newPdf = new Pdf({ name: originalname, url: fileUrl });
+    const newPdf = new Pdf({ name: originalname, url: fileUrl, size });
     await newPdf.save();
     res.status(201).json(newPdf);
   } catch (err) {
@@ -125,9 +127,9 @@ app.get('/pdfs', async (req, res) => {
 // Image Upload & Fetch
 app.post('/upload-image', upload.single('file'), async (req, res) => {
   try {
-    const { originalname, filename } = req.file;
+    const { originalname, filename, size } = req.file;
     const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${filename}`;
-    const newImage = new Image({ name: originalname, url: fileUrl });
+    const newImage = new Image({ name: originalname, url: fileUrl, size });
     await newImage.save();
     res.status(201).json(newImage);
   } catch (err) {
@@ -144,17 +146,78 @@ app.get('/images', async (req, res) => {
   }
 });
 
-// Database Size API
+// Stats Endpoints
+app.get('/notes-stats', async (req, res) => {
+  try {
+    const notesCount = await Note.countDocuments();
+    const notesSize = await Note.aggregate([
+      { $project: { size: { $strLenCP: "$description" } } },
+      { $group: { _id: null, totalSize: { $sum: "$size" } } },
+    ]);
+    const totalSize = notesSize.length > 0 ? notesSize[0].totalSize : 0;
+
+    res.status(200).json({
+      count: notesCount,
+      totalSize: `${totalSize} characters`,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/images-stats', async (req, res) => {
+  try {
+    const imagesCount = await Image.countDocuments();
+    const imagesSize = await Image.aggregate([
+      { $group: { _id: null, totalSize: { $sum: "$size" } } },
+    ]);
+    const totalSize = imagesSize.length > 0 ? imagesSize[0].totalSize : 0;
+
+    res.status(200).json({
+      count: imagesCount,
+      totalSize: `${(totalSize / 1024 / 1024).toFixed(2)} MB`,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/pdf-stats', async (req, res) => {
+  try {
+    const pdfCount = await Pdf.countDocuments();
+    const pdfSize = await Pdf.aggregate([
+      { $group: { _id: null, totalSize: { $sum: "$size" } } },
+    ]);
+    const totalSize = pdfSize.length > 0 ? pdfSize[0].totalSize : 0;
+
+    res.status(200).json({
+      count: pdfCount,
+      totalSize: `${(totalSize / 1024 / 1024).toFixed(2)} MB`,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/database-size', async (req, res) => {
   try {
     const notesCount = await Note.countDocuments();
     const imagesCount = await Image.countDocuments();
-    const pdfsCount = await Pdf.countDocuments();
+    const pdfCount = await Pdf.countDocuments();
+
+    const imagesSize = await Image.aggregate([{ $group: { _id: null, totalSize: { $sum: "$size" } } }]);
+    const pdfSize = await Pdf.aggregate([{ $group: { _id: null, totalSize: { $sum: "$size" } } }]);
+
+    const totalImageSize = imagesSize.length > 0 ? imagesSize[0].totalSize : 0;
+    const totalPdfSize = pdfSize.length > 0 ? pdfSize[0].totalSize : 0;
+
+    const totalSizeMB = ((totalImageSize + totalPdfSize) / 1024 / 1024).toFixed(2);
 
     res.status(200).json({
-      notes: notesCount,
-      images: imagesCount,
-      pdfs: pdfsCount,
+      notesCount,
+      imagesCount,
+      pdfCount,
+      totalSize: `${totalSizeMB} MB`,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
