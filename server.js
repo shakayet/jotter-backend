@@ -188,7 +188,7 @@ app.get('/images-stats', async (req, res) => {
   }
 });
 
-app.get('/pdf-stats', async (req, res) => {
+app.get('/pdfs-stats', async (req, res) => {
   try {
     const pdfCount = await Pdf.countDocuments();
     const pdfSize = fs.readdirSync(uploadDir)
