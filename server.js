@@ -100,7 +100,7 @@ app.get('/notes', async (req, res) => {
 });
 
 // PDF Upload & Fetch
-app.post('/upload-pdf', upload.single('file'), async (req, res) => {
+app.post('/pdfs', upload.single('file'), async (req, res) => {
   try {
     const { originalname, filename } = req.file;
     const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${filename}`;
