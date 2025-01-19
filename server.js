@@ -4,7 +4,6 @@ const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const moment = require('moment-timezone');
 
 // Create Express App
 const app = express();
@@ -53,14 +52,12 @@ const pdfSchema = new mongoose.Schema({
   name: { type: String, required: true },
   url: { type: String, required: true },
   uploadedAt: { type: Date, default: Date.now },
-  size: { type: Number, required: true }, // Add file size for stats
 });
 
 const imageSchema = new mongoose.Schema({
   name: { type: String, required: true },
   url: { type: String, required: true },
   uploadedAt: { type: Date, default: Date.now },
-  size: { type: Number, required: true }, // Add file size for stats
 });
 
 // Create Models
@@ -70,7 +67,7 @@ const Image = mongoose.model('Image', imageSchema);
 
 // API Routes
 app.get('/', (req, res) => {
-  res.send('🚀 Server is running successfully on Render!');
+  res.send('🚀 Server is running successfully!');
 });
 
 // Notes API
@@ -105,9 +102,9 @@ app.get('/notes', async (req, res) => {
 // PDF Upload & Fetch
 app.post('/upload-pdf', upload.single('file'), async (req, res) => {
   try {
-    const { originalname, filename, size } = req.file;
+    const { originalname, filename } = req.file;
     const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${filename}`;
-    const newPdf = new Pdf({ name: originalname, url: fileUrl, size });
+    const newPdf = new Pdf({ name: originalname, url: fileUrl });
     await newPdf.save();
     res.status(201).json(newPdf);
   } catch (err) {
@@ -127,9 +124,9 @@ app.get('/pdfs', async (req, res) => {
 // Image Upload & Fetch
 app.post('/upload-image', upload.single('file'), async (req, res) => {
   try {
-    const { originalname, filename, size } = req.file;
+    const { originalname, filename } = req.file;
     const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${filename}`;
-    const newImage = new Image({ name: originalname, url: fileUrl, size });
+    const newImage = new Image({ name: originalname, url: fileUrl });
     await newImage.save();
     res.status(201).json(newImage);
   } catch (err) {
@@ -151,14 +148,23 @@ app.get('/notes-stats', async (req, res) => {
   try {
     const notesCount = await Note.countDocuments();
     const notesSize = await Note.aggregate([
-      { $project: { size: { $strLenCP: "$description" } } },
+      {
+        $project: {
+          size: {
+            $add: [
+              { $strLenBytes: "$header" },
+              { $strLenBytes: "$description" }
+            ]
+          }
+        }
+      },
       { $group: { _id: null, totalSize: { $sum: "$size" } } },
     ]);
     const totalSize = notesSize.length > 0 ? notesSize[0].totalSize : 0;
 
     res.status(200).json({
       count: notesCount,
-      totalSize: `${totalSize} characters`,
+      totalSize: `${(totalSize / 1024).toFixed(2)} MB`, // ensure size is formatted
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -168,14 +174,14 @@ app.get('/notes-stats', async (req, res) => {
 app.get('/images-stats', async (req, res) => {
   try {
     const imagesCount = await Image.countDocuments();
-    const imagesSize = await Image.aggregate([
-      { $group: { _id: null, totalSize: { $sum: "$size" } } },
-    ]);
-    const totalSize = imagesSize.length > 0 ? imagesSize[0].totalSize : 0;
+    const imagesSize = fs.readdirSync(uploadDir)
+      .filter(file => file.match(/\.(jpg|jpeg|png|gif)$/))
+      .map(file => fs.statSync(path.join(uploadDir, file)).size)
+      .reduce((acc, size) => acc + size, 0);
 
     res.status(200).json({
       count: imagesCount,
-      totalSize: `${(totalSize / 1024 / 1024).toFixed(2)} MB`,
+      totalSize: `${(imagesSize / 1024).toFixed(2)} MB`, // ensure size is formatted
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -185,14 +191,14 @@ app.get('/images-stats', async (req, res) => {
 app.get('/pdf-stats', async (req, res) => {
   try {
     const pdfCount = await Pdf.countDocuments();
-    const pdfSize = await Pdf.aggregate([
-      { $group: { _id: null, totalSize: { $sum: "$size" } } },
-    ]);
-    const totalSize = pdfSize.length > 0 ? pdfSize[0].totalSize : 0;
+    const pdfSize = fs.readdirSync(uploadDir)
+      .filter(file => file.match(/\.pdf$/))
+      .map(file => fs.statSync(path.join(uploadDir, file)).size)
+      .reduce((acc, size) => acc + size, 0);
 
     res.status(200).json({
       count: pdfCount,
-      totalSize: `${(totalSize / 1024 / 1024).toFixed(2)} MB`,
+      totalSize: `${(pdfSize / 1024).toFixed(2)} MB`, // ensure size is formatted
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -201,23 +207,11 @@ app.get('/pdf-stats', async (req, res) => {
 
 app.get('/database-size', async (req, res) => {
   try {
-    const notesCount = await Note.countDocuments();
-    const imagesCount = await Image.countDocuments();
-    const pdfCount = await Pdf.countDocuments();
-
-    const imagesSize = await Image.aggregate([{ $group: { _id: null, totalSize: { $sum: "$size" } } }]);
-    const pdfSize = await Pdf.aggregate([{ $group: { _id: null, totalSize: { $sum: "$size" } } }]);
-
-    const totalImageSize = imagesSize.length > 0 ? imagesSize[0].totalSize : 0;
-    const totalPdfSize = pdfSize.length > 0 ? pdfSize[0].totalSize : 0;
-
-    const totalSizeMB = ((totalImageSize + totalPdfSize) / 1024 / 1024).toFixed(2);
+    const stats = await mongoose.connection.db.stats();
+    const totalSize = stats.dataSize || 0;
 
     res.status(200).json({
-      notesCount,
-      imagesCount,
-      pdfCount,
-      totalSize: `${totalSizeMB} MB`,
+      totalSize: `${(totalSize / 1024).toFixed(2)} MB`, // ensure size is formatted
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
