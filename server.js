@@ -171,6 +171,26 @@ app.get('/notes-stats', async (req, res) => {
   }
 });
 
+// Uploaded Dates API
+app.get('/uploaded-dates', async (req, res) => {
+    try {
+      const noteDates = await Note.find().distinct('createdAt');
+      const pdfDates = await Pdf.find().distinct('uploadedAt');
+      const imageDates = await Image.find().distinct('uploadedAt');
+  
+      // Merge, format, and remove duplicate dates
+      const allDates = [...noteDates, ...pdfDates, ...imageDates]
+        .map(date => new Date(date).toISOString().split('T')[0]) // Format YYYY-MM-DD
+        .filter((date, index, self) => self.indexOf(date) === index) // Remove duplicates
+        .sort((a, b) => new Date(b) - new Date(a)); // Sort in descending order
+  
+      res.status(200).json(allDates);
+    } catch (error) {
+      console.error('Error fetching uploaded dates:', error);
+      res.status(500).json({ error: 'Internal Server Error' });
+    }
+  });
+
 app.get('/images-stats', async (req, res) => {
   try {
     const imagesCount = await Image.countDocuments();
